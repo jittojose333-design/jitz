@@ -581,7 +581,7 @@ export default function Home() {
         alert(`Successfully scraped data for ${p.nregaGP || p.name}!\nReview the text area and click 'Sync Distribution' to confirm.`);
       }
     } catch (error: any) {
-      alert(`Auto-Fetch Failed: ${error.message}\nMake sure District/Block names match NREGA portal exactly.`);
+      alert(`Auto-Fetch Failed: ${error.message}\n\nTIP: Open the specific "No. Of Vendors" page for this Panchayat in your browser, copy that URL, and paste it into the NREGA URL setting.`);
     } finally {
       setIsFetching(false);
     }
