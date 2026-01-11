@@ -1,0 +1,6 @@
+@echo off
+echo Starting Aone Board Tracker...
+echo Opening in browser...
+start http://localhost:3000
+npm run dev
+pause
