@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 
-// Helper: Resolve relative URLs
+// Helper to resolve relative URLs
 const resolveUrl = (base: string, relative: string) => {
     try {
         return new URL(relative, base).href;
@@ -10,127 +10,148 @@ const resolveUrl = (base: string, relative: string) => {
     }
 };
 
-// Helper: Fetch with browser-like headers
-const fetchPage = async (pageUrl: string) => {
-    console.log('Fetching:', pageUrl);
-    try {
-        const res = await fetch(pageUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Upgrade-Insecure-Requests': '1',
-                'Connection': 'keep-alive'
-            },
-            next: { revalidate: 0 }
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.text();
-    } catch (e: any) {
-        throw new Error(`Connection failed: ${pageUrl} (${e.message})`);
+// Helper to find link by approximate text
+const findLink = ($: cheerio.CheerioAPI, text: string) => {
+    if (!text) return null;
+    const search = text.toLowerCase().trim();
+
+    // Try exact match first
+    let el = $(`a`).filter((i, el) => $(el).text().toLowerCase().trim() === search).first();
+
+    // Try contains if no exact match
+    if (el.length === 0) {
+        el = $(`a`).filter((i, el) => $(el).text().toLowerCase().includes(search)).first();
     }
+
+    return el.length > 0 ? el.attr('href') : null;
 };
 
+// Start of the robust scraping logic
 export async function POST(req: NextRequest) {
     try {
-        const { url, panchayat } = await req.json(); // Clean props
-        if (!url) return NextResponse.json({ error: 'URL required' }, { status: 400 });
+        const { url, district, block, panchayat } = await req.json();
 
+        if (!url) return NextResponse.json({ error: 'Initial URL is required' }, { status: 400 });
+
+        const fetchPage = async (pageUrl: string) => {
+            console.log('Fetching:', pageUrl);
+            try {
+                const res = await fetch(pageUrl, {
+                    method: 'GET',
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Upgrade-Insecure-Requests': '1',
+                        'Connection': 'keep-alive'
+                    },
+                    next: { revalidate: 0 }
+                });
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status} (${res.statusText}) fetching ${pageUrl}`);
+                }
+                const text = await res.text();
+                if (!text || text.length < 100) throw new Error("Received empty/invalid response from NREGA");
+                return text;
+            } catch (e: any) {
+                const msg = e.cause ? e.cause.message : e.message;
+                throw new Error(`Failed to load ${pageUrl}: ${msg}`);
+            }
+        };
+
+        // Step 1: Loading State Page (Provided URL)
         let currentUrl = url;
         let html = await fetchPage(currentUrl);
         let $ = cheerio.load(html);
 
-        // STRATEGY 1: Check if this IS the data page (Direct Link)
-        // Look for a substantial table
-        let tableData = extractTable($);
-        if (tableData) {
-            console.log("Success: Data found on initial URL (Direct Link).");
-            return NextResponse.json({ data: tableData, currentUrl });
+        // If district provided, click it
+        if (district) {
+            const districtLink = findLink($, district);
+            if (!districtLink) throw new Error(`District '${district}' not found in the list.`);
+            currentUrl = resolveUrl(currentUrl, districtLink);
+
+            // Step 2: Fetch District Page
+            html = await fetchPage(currentUrl);
+            $ = cheerio.load(html);
         }
 
-        // STRATEGY 2: If we are on Block Page, find Panchayat
+        // If block provided, click it
+        if (block) {
+            const blockLink = findLink($, block);
+            if (!blockLink) throw new Error(`Block '${block}' not found inside ${district}.`);
+            currentUrl = resolveUrl(currentUrl, blockLink);
+
+            // Step 3: Fetch Block Page
+            html = await fetchPage(currentUrl);
+            $ = cheerio.load(html);
+        }
+
+        // If panchayat provided, click specific column
         if (panchayat) {
-            console.log(`Searching for Panchayat: ${panchayat}`);
-            const pLink = findLinkByText($, panchayat);
+            // Find the row containing the Panchayat Name
+            let targetRow: cheerio.Cheerio<any> | null = null;
+            const searchP = panchayat.toLowerCase().trim();
 
-            if (pLink) {
-                currentUrl = resolveUrl(currentUrl, pLink);
-                html = await fetchPage(currentUrl);
-                $ = cheerio.load(html);
-
-                // Now we are on Panchayat Page. Check for table? Unlikely.
-                // We need to find "No. of Vendors" or "Expenditure" link.
-
-                // Try finding numeric link in first few rows or links
-                const vendorLink = findVendorLink($);
-                if (vendorLink) {
-                    currentUrl = resolveUrl(currentUrl, vendorLink);
-                    html = await fetchPage(currentUrl);
-                    $ = cheerio.load(html);
-
-                    tableData = extractTable($);
-                    if (tableData) {
-                        return NextResponse.json({ data: tableData, currentUrl });
-                    }
+            $('tr').each((i, row) => {
+                const rowText = $(row).text().toLowerCase();
+                if (rowText.includes(searchP)) {
+                    targetRow = $(row);
+                    return false; // Break loop
                 }
-            }
-        }
-
-        throw new Error("Could not find data table. Try pasting the 'Vendor Expenditure' page URL directly.");
-
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-}
-
-// --- Utilities ---
-
-function extractTable($: cheerio.CheerioAPI): string | null {
-    // Logic: Look for table with > 5 rows and content looks like data
-    let bestTable = '';
-    let maxRows = 0;
-
-    $('table').each((i, tbl) => {
-        const rows = $(tbl).find('tr');
-        if (rows.length > 5) { // Threshold for data table
-            let currentTableText = '';
-            rows.each((j, row) => {
-                const cells = $(row).find('td, th');
-                const rowText = cells.map((k, cell) => $(cell).text().trim().replace(/\s+/g, ' ')).get().join('\t');
-                if (rowText.length > 10) currentTableText += rowText + '\n';
             });
 
-            if (rows.length > maxRows) {
-                maxRows = rows.length;
-                bestTable = currentTableText;
+            if (!targetRow) throw new Error(`Panchayat '${panchayat}' not found in the table rows.`);
+
+            // Find the link in this row that is NOT the panchayat name itself, but looks like a number (No. of Vendors)
+            // Or simply the last link in the row, or the second link.
+            const links = $(targetRow).find('a');
+            let targetLink = null;
+
+            // Logic: Pick the link that is entirely numeric or ends with a number
+            links.each((i, link) => {
+                const txt = $(link).text().trim();
+                // Check if purely numeric or ends with number (common for counts)
+                if (/^\d+$/.test(txt)) {
+                    targetLink = $(link).attr('href');
+                    return false; // Found the number link
+                }
+            });
+
+            // Fallback: If no numeric link, take the last link
+            if (!targetLink && links.length > 0) {
+                targetLink = links.last().attr('href');
             }
-        }
-    });
 
-    return maxRows > 5 ? bestTable : null;
-}
+            if (!targetLink) throw new Error(`Could not find 'No. of Vendors' link for '${panchayat}'.`);
 
-function findLinkByText($: cheerio.CheerioAPI, text: string): string | null {
-    const search = text.toLowerCase().trim();
-    let target = null;
-    $('a').each((i, el) => {
-        if ($(el).text().toLowerCase().includes(search)) {
-            target = $(el).attr('href');
-            return false;
-        }
-    });
-    return target || null;
-}
+            currentUrl = resolveUrl(currentUrl, targetLink);
 
-function findVendorLink($: cheerio.CheerioAPI): string | null {
-    // Look for link that is a number (Vendor count)
-    let target = null;
-    $('a').each((i, el) => {
-        const txt = $(el).text().trim();
-        if (/^\d+$/.test(txt)) { // Is number?
-            target = $(el).attr('href');
-            return false;
+            // Step 4: Fetch Final Panchayat Page
+            html = await fetchPage(currentUrl);
+            $ = cheerio.load(html);
         }
-    });
-    return target;
+
+        // Step 5: Scrape Table Data
+        let tableData = '';
+        $('tr').each((i, row) => {
+            const cells = $(row).find('td, th');
+            if (cells.length > 0) {
+                const rowText = cells.map((j, cell) => $(cell).text().trim().replace(/\s+/g, ' ')).get().join('\t');
+                if (rowText.length > 10) {
+                    tableData += rowText + '\n';
+                }
+            }
+        });
+
+        if (tableData.length < 50) {
+            throw new Error("No data table found on the final page.");
+        }
+
+        return NextResponse.json({ data: tableData, currentUrl });
+
+    } catch (error: any) {
+        console.error('Crawler Error:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 }
