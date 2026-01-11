@@ -35,14 +35,36 @@ export async function POST(req: NextRequest) {
 
         const fetchPage = async (pageUrl: string) => {
             console.log('Fetching:', pageUrl);
-            const res = await fetch(pageUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+            try {
+                const res = await fetch(pageUrl, {
+                    method: 'GET',
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache',
+                        'Upgrade-Insecure-Requests': '1',
+                        'Referer': 'https://nrega.nic.in/',
+                        'Connection': 'keep-alive'
+                    },
+                    cache: 'no-store',
+                    next: { revalidate: 0 }
+                });
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status} (${res.statusText}) fetching ${pageUrl}`);
                 }
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${pageUrl}`);
-            return await res.text();
+                const text = await res.text();
+                // Basic check if we assume successful text return
+                if (!text || text.length < 100) throw new Error("Received empty/invalid response from NREGA");
+                return text;
+            } catch (e: any) {
+                // Return a clear error about WHICH url failed
+                // Distinguish between timeout vs network error
+                const msg = e.cause ? e.cause.message : e.message;
+                throw new Error(`Failed to load ${pageUrl}: ${msg}`);
+            }
         };
 
         // Helper to find Panchayat on the current page
