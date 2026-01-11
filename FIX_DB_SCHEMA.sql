@@ -1,8 +1,15 @@
--- Enable UUID extension
-create extension if not exists "uuid-ossp";
+-- DANGER: This will delete existing data to fix the ID format issue.
+-- Run this in Supabase SQL Editor to reset your tables.
+
+DROP TABLE IF EXISTS public.expenses;
+DROP TABLE IF EXISTS public.expense_categories;
+DROP TABLE IF EXISTS public.orders;
+DROP TABLE IF EXISTS public.panchayats;
+
+-- Now recreate them with the correct TEXT id type (to allow 'panch-xxx')
 
 -- Table: Panchayats
-create table if not exists public.panchayats (
+create table public.panchayats (
   id text primary key,
   name text not null,
   contact_person text,
@@ -16,7 +23,7 @@ create table if not exists public.panchayats (
 );
 
 -- Table: Orders
-create table if not exists public.orders (
+create table public.orders (
   id text primary key,
   date text not null,
   work_code text,
@@ -35,7 +42,7 @@ create table if not exists public.orders (
 );
 
 -- Table: Expense Categories
-create table if not exists public.expense_categories (
+create table public.expense_categories (
   id text primary key,
   name text not null,
   sub_categories text[] default array[]::text[],
@@ -44,7 +51,7 @@ create table if not exists public.expense_categories (
 );
 
 -- Table: Expenses
-create table if not exists public.expenses (
+create table public.expenses (
   id text primary key,
   date text not null,
   description text,
@@ -56,21 +63,13 @@ create table if not exists public.expenses (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Row Level Security (RLS)
+-- Restore RLS
 alter table public.panchayats enable row level security;
 alter table public.orders enable row level security;
 alter table public.expense_categories enable row level security;
 alter table public.expenses enable row level security;
 
--- Policies (Safe Drop & Recreate)
-drop policy if exists "Enable all access for all users" on public.panchayats;
 create policy "Enable all access for all users" on public.panchayats for all using (true) with check (true);
-
-drop policy if exists "Enable all access for all users" on public.orders;
 create policy "Enable all access for all users" on public.orders for all using (true) with check (true);
-
-drop policy if exists "Enable all access for all users" on public.expense_categories;
 create policy "Enable all access for all users" on public.expense_categories for all using (true) with check (true);
-
-drop policy if exists "Enable all access for all users" on public.expenses;
 create policy "Enable all access for all users" on public.expenses for all using (true) with check (true);

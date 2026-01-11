@@ -45,10 +45,65 @@ export async function POST(req: NextRequest) {
             return await res.text();
         };
 
+        // Helper to find Panchayat on the current page
+        const findAndScrapePanchayatRow = async ($context: cheerio.CheerioAPI, pName: string) => {
+            // Find the row containing the Panchayat Name
+            let targetRow: cheerio.Cheerio<any> | null = null;
+            const searchP = pName.toLowerCase().trim();
+
+            $context('tr').each((i, row) => {
+                const rowText = $context(row).text().toLowerCase();
+                if (rowText.includes(searchP)) {
+                    targetRow = $context(row);
+                    return false; // Break loop
+                }
+            });
+
+            if (!targetRow) return null;
+
+            const links = $context(targetRow).find('a');
+            let targetLink: string | undefined = undefined;
+
+            // Logic: Pick the link that is entirely numeric or ends with a number
+            links.each((i, link) => {
+                const txt = $context(link).text().trim();
+                if (/^\d+$/.test(txt)) {
+                    targetLink = $context(link).attr('href');
+                    return false; // Found the number link
+                }
+            });
+
+            // Fallback
+            if (!targetLink && links.length > 0) {
+                targetLink = links.last().attr('href');
+            }
+
+            return targetLink;
+        };
+
         // Step 1: Loading State Page (Provided URL)
         let currentUrl = url;
         let html = await fetchPage(currentUrl);
         let $ = cheerio.load(html);
+
+        // OPTIMIZATION: Check if we are ALREADY on the Panchayat List page (Block Page)
+        // If the user pastes the Block URL, we can skip District/Block navigation steps.
+        if (panchayat) {
+            const directLink = await findAndScrapePanchayatRow($, panchayat);
+            if (directLink) {
+                console.log("Optimization: Found Panchayat directly on initial page. Skipping navigation.");
+                currentUrl = resolveUrl(currentUrl, directLink);
+                html = await fetchPage(currentUrl);
+                $ = cheerio.load(html);
+                // Skip to Step 5 (Scraping)
+                // We clear district/block/panchayat flags effectively by jumping to end
+                // But simply returning the flow to the scrape section is enough.
+                // We will set flags to false to prevent further navigation logic
+                district = null;
+                block = null;
+                panchayat = null; // Mark as handled
+            }
+        }
 
         // If district provided, click it
         if (district) {
@@ -72,47 +127,12 @@ export async function POST(req: NextRequest) {
             $ = cheerio.load(html);
         }
 
-        // If panchayat provided, click specific column
+        // If panchayat provided (and not handled by optimization)
         if (panchayat) {
-            // Find the row containing the Panchayat Name
-            let targetRow: cheerio.Cheerio<any> | null = null;
-            const searchP = panchayat.toLowerCase().trim();
-
-            $('tr').each((i, row) => {
-                const rowText = $(row).text().toLowerCase();
-                if (rowText.includes(searchP)) {
-                    targetRow = $(row);
-                    return false; // Break loop
-                }
-            });
-
-            if (!targetRow) throw new Error(`Panchayat '${panchayat}' not found in the table rows.`);
-
-            // Find the link in this row that is NOT the panchayat name itself, but looks like a number (No. of Vendors)
-            // Or simply the last link in the row, or the second link.
-            // Usually Panchayat Name is col 1 or 2, Vendors count is later.
-            const links = $(targetRow).find('a');
-            let targetLink = null;
-
-            // Logic: Pick the link that is entirely numeric or ends with a number
-            links.each((i, link) => {
-                const txt = $(link).text().trim();
-                if (/^\d+$/.test(txt)) {
-                    targetLink = $(link).attr('href');
-                    return false; // Found the number link
-                }
-            });
-
-            // Fallback: If no numeric link, take the last link
-            if (!targetLink && links.length > 0) {
-                targetLink = links.last().attr('href');
-            }
-
-            if (!targetLink) throw new Error(`Could not find 'No. of Vendors' link for '${panchayat}'.`);
+            const targetLink = await findAndScrapePanchayatRow($, panchayat);
+            if (!targetLink) throw new Error(`Panchayat '${panchayat}' not found/no vendor link.`);
 
             currentUrl = resolveUrl(currentUrl, targetLink);
-
-            // Step 4: Fetch Final Panchayat Page
             html = await fetchPage(currentUrl);
             $ = cheerio.load(html);
         }
