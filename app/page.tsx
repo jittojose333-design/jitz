@@ -102,13 +102,19 @@ export default function Home() {
 
       const { data: panchayatsData } = await supabase.from('panchayats').select('*');
       if (panchayatsData) {
-        // Map snake_case (DB) to camelCase (App)
+        // Map snake_case (DB) to camelCase (App) with SAFETY DEFAULTS
         setPanchayats(panchayatsData.map((p: any) => ({
           ...p,
-          contactPerson: p.contact_person,
-          boardPrices: p.board_prices,
-          nregaGP: p.nrega_gp,
-          createdAt: p.created_at
+          id: p.id || 'unknown',
+          name: p.name || 'Unknown Panchayat',
+          contactPerson: p.contact_person || '',
+          phone: p.phone || '',
+          boardPrices: p.board_prices || { type1: 0, type2: 0, type3: 0, type4: 0 },
+          vendors: Array.isArray(p.vendors) ? p.vendors : [],
+          district: p.district || '',
+          block: p.block || '',
+          nregaGP: p.nrega_gp || p.name || '',
+          createdAt: p.created_at || new Date().toISOString()
         })));
       }
 
@@ -116,16 +122,18 @@ export default function Home() {
       if (ordersData) {
         setOrders(ordersData.map((o: any) => ({
           ...o,
-          workCode: o.work_code,
-          workName: o.work_name,
-          panchayatId: o.panchayat_id,
-          panchayatName: o.panchayat_name,
-          isPlaced: o.is_placed,
+          workCode: o.work_code || '',
+          workName: o.work_name || '',
+          panchayatId: o.panchayat_id || '',
+          panchayatName: o.panchayat_name || 'Unknown',
+          isPlaced: o.is_placed || false,
           paymentDate: o.payment_date,
           verifiedAmount: o.verified_amount,
           verifiedDate: o.verified_date,
-          isVerified: o.is_verified,
-          // handle potentially verified_amount if needed
+          isVerified: o.is_verified || false,
+          amount: o.amount || 0,
+          items: o.items || '',
+          status: o.status || 'Unpaid'
         })));
       }
 
@@ -133,10 +141,10 @@ export default function Home() {
       if (expensesData) {
         setExpenses(expensesData.map((e: any) => ({
           ...e,
-          categoryId: e.category_id,
-          categoryName: e.category_name,
-          subCategory: e.sub_category,
-          panchayatId: e.panchayat_id
+          categoryId: e.category_id || '',
+          categoryName: e.category_name || '',
+          subCategory: e.sub_category || '',
+          panchayatId: e.panchayat_id || ''
         })));
       }
 
@@ -144,8 +152,8 @@ export default function Home() {
       if (categoriesData && categoriesData.length > 0) {
         setCategories(categoriesData.map((c: any) => ({
           ...c,
-          subCategories: c.sub_categories,
-          isPanchayatLinked: c.is_panchayat_linked
+          subCategories: Array.isArray(c.sub_categories) ? c.sub_categories : [],
+          isPanchayatLinked: c.is_panchayat_linked || false
         })));
       } else {
         // Default Categories if none in DB
