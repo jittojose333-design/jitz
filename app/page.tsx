@@ -101,17 +101,52 @@ export default function Home() {
       setIsLoaded(false);
 
       const { data: panchayatsData } = await supabase.from('panchayats').select('*');
-      if (panchayatsData) setPanchayats(panchayatsData);
+      if (panchayatsData) {
+        // Map snake_case (DB) to camelCase (App)
+        setPanchayats(panchayatsData.map((p: any) => ({
+          ...p,
+          contactPerson: p.contact_person,
+          boardPrices: p.board_prices,
+          nregaGP: p.nrega_gp,
+          createdAt: p.created_at
+        })));
+      }
 
       const { data: ordersData } = await supabase.from('orders').select('*');
-      if (ordersData) setOrders(ordersData);
+      if (ordersData) {
+        setOrders(ordersData.map((o: any) => ({
+          ...o,
+          workCode: o.work_code,
+          workName: o.work_name,
+          panchayatId: o.panchayat_id,
+          panchayatName: o.panchayat_name,
+          isPlaced: o.is_placed,
+          paymentDate: o.payment_date,
+          verifiedAmount: o.verified_amount,
+          verifiedDate: o.verified_date,
+          isVerified: o.is_verified,
+          // handle potentially verified_amount if needed
+        })));
+      }
 
       const { data: expensesData } = await supabase.from('expenses').select('*');
-      if (expensesData) setExpenses(expensesData);
+      if (expensesData) {
+        setExpenses(expensesData.map((e: any) => ({
+          ...e,
+          categoryId: e.category_id,
+          categoryName: e.category_name,
+          subCategory: e.sub_category,
+          panchayatId: e.panchayat_id
+        })));
+      }
 
       const { data: categoriesData } = await supabase.from('expense_categories').select('*');
       if (categoriesData && categoriesData.length > 0) {
-        setCategories(categoriesData);
+        setCategories(categoriesData.map((c: any) => ({
+          ...c,
+          subCategories: c.sub_categories,
+          isPanchayatLinked: c.is_panchayat_linked
+        })));
       } else {
         // Default Categories if none in DB
         setCategories([
