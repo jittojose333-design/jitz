@@ -39,26 +39,46 @@ export async function POST(req: NextRequest) {
 
         if (!url) return NextResponse.json({ error: 'Initial URL is required' }, { status: 400 });
 
+        // Simple Cookie Jar
+        let cookieJar = '';
+
         const fetchPage = async (pageUrl: string) => {
             log(`Fetching URL: ${pageUrl}...`);
             const startTime = Date.now();
             try {
+                const headers: any = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Connection': 'keep-alive'
+                };
+
+                // Attach existing cookies
+                if (cookieJar) {
+                    headers['Cookie'] = cookieJar;
+                }
+
                 const res = await fetch(pageUrl, {
                     method: 'GET',
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-                        'Accept-Language': 'en-US,en;q=0.9',
-                        'Upgrade-Insecure-Requests': '1',
-                        'Connection': 'keep-alive'
-                    },
+                    headers: headers,
                     next: { revalidate: 0 },
-                    signal: AbortSignal.timeout(9000) // 9s timeout (Netlify limit is 10s)
+                    signal: AbortSignal.timeout(9500) // 9.5s timeout (Netlify limit is 10s)
                 });
 
                 if (!res.ok) {
                     throw new Error(`HTTP ${res.status} (${res.statusText})`);
                 }
+
+                // Extract and Merge Cookies
+                const setCookie = res.headers.get('set-cookie');
+                if (setCookie) {
+                    // Simple merge: append new cookies. Browsers are smarter, but this usually works for ASP.NET SessionIds
+                    const newCookies = setCookie.split(',').map(c => c.split(';')[0]).join('; ');
+                    cookieJar = cookieJar ? `${cookieJar}; ${newCookies}` : newCookies;
+                    // Deduplicate isn't strictly necessary for simple cases but good practice
+                }
+
                 const text = await res.text();
                 log(`Fetched ${text.length} bytes in ${Date.now() - startTime}ms`);
                 return text;
