@@ -29,7 +29,7 @@ const findLink = ($: cheerio.CheerioAPI, text: string) => {
 // Start of the robust scraping logic
 export async function POST(req: NextRequest) {
     try {
-        const { url, district, block, panchayat } = await req.json();
+        let { url, district, block, panchayat } = await req.json();
 
         if (!url) return NextResponse.json({ error: 'Initial URL is required' }, { status: 400 });
 
