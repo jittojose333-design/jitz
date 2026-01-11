@@ -28,67 +28,85 @@ const findLink = ($: cheerio.CheerioAPI, text: string) => {
 
 // Start of the robust scraping logic
 export async function POST(req: NextRequest) {
+    const logs: string[] = [];
+    const log = (msg: string) => {
+        console.log(msg);
+        logs.push(msg);
+    };
+
     try {
         const { url, district, block, panchayat } = await req.json();
 
         if (!url) return NextResponse.json({ error: 'Initial URL is required' }, { status: 400 });
 
         const fetchPage = async (pageUrl: string) => {
-            console.log('Fetching:', pageUrl);
+            log(`Fetching URL: ${pageUrl}...`);
+            const startTime = Date.now();
             try {
                 const res = await fetch(pageUrl, {
                     method: 'GET',
                     headers: {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
                         'Accept-Language': 'en-US,en;q=0.9',
                         'Upgrade-Insecure-Requests': '1',
                         'Connection': 'keep-alive'
                     },
-                    next: { revalidate: 0 }
+                    next: { revalidate: 0 },
+                    signal: AbortSignal.timeout(9000) // 9s timeout (Netlify limit is 10s)
                 });
 
                 if (!res.ok) {
-                    throw new Error(`HTTP ${res.status} (${res.statusText}) fetching ${pageUrl}`);
+                    throw new Error(`HTTP ${res.status} (${res.statusText})`);
                 }
                 const text = await res.text();
-                if (!text || text.length < 100) throw new Error("Received empty/invalid response from NREGA");
+                log(`Fetched ${text.length} bytes in ${Date.now() - startTime}ms`);
                 return text;
             } catch (e: any) {
                 const msg = e.cause ? e.cause.message : e.message;
-                throw new Error(`Failed to load ${pageUrl}: ${msg}`);
+                throw new Error(`Fetch Failed: ${msg}`);
             }
         };
 
-        // Step 1: Loading State Page (Provided URL)
+        // Step 1: Loading State Page
         let currentUrl = url;
+        log(`Step 1: Loading Initial State Page...`);
         let html = await fetchPage(currentUrl);
         let $ = cheerio.load(html);
 
-        // If district provided, click it
+        // If district provided
         if (district) {
+            log(`Step 2: Searching for District '${district}'...`);
             const districtLink = findLink($, district);
-            if (!districtLink) throw new Error(`District '${district}' not found in the list.`);
+            if (!districtLink) throw new Error(`District '${district}' link not found on page.`);
+
             currentUrl = resolveUrl(currentUrl, districtLink);
+            log(`Found District Link: ${districtLink}. Navigating...`);
 
-            // Step 2: Fetch District Page
             html = await fetchPage(currentUrl);
             $ = cheerio.load(html);
+        } else {
+            log(`Skipping District step (not provided)`);
         }
 
-        // If block provided, click it
+        // If block provided
         if (block) {
+            log(`Step 3: Searching for Block '${block}'...`);
             const blockLink = findLink($, block);
-            if (!blockLink) throw new Error(`Block '${block}' not found inside ${district}.`);
-            currentUrl = resolveUrl(currentUrl, blockLink);
+            if (!blockLink) throw new Error(`Block '${block}' link not found inside District page.`);
 
-            // Step 3: Fetch Block Page
+            currentUrl = resolveUrl(currentUrl, blockLink);
+            log(`Found Block Link: ${blockLink}. Navigating...`);
+
             html = await fetchPage(currentUrl);
             $ = cheerio.load(html);
+        } else {
+            log(`Skipping Block step (not provided)`);
         }
 
-        // If panchayat provided, click specific column
+        // If panchayat provided
         if (panchayat) {
+            log(`Step 4: Searching for Panchayat '${panchayat}'...`);
             // Find the row containing the Panchayat Name
             let targetRow: cheerio.Cheerio<any> | null = null;
             const searchP = panchayat.toLowerCase().trim();
@@ -101,38 +119,33 @@ export async function POST(req: NextRequest) {
                 }
             });
 
-            if (!targetRow) throw new Error(`Panchayat '${panchayat}' not found in the table rows.`);
+            if (!targetRow) throw new Error(`Panchayat '${panchayat}' row not found in table.`);
+            log(`Found Panchayat Row.`);
 
-            // Find the link in this row that is NOT the panchayat name itself, but looks like a number (No. of Vendors)
-            // Or simply the last link in the row, or the second link.
             const links = $(targetRow).find('a');
             let targetLink = null;
 
-            // Logic: Pick the link that is entirely numeric or ends with a number
             links.each((i, link) => {
                 const txt = $(link).text().trim();
-                // Check if purely numeric or ends with number (common for counts)
                 if (/^\d+$/.test(txt)) {
                     targetLink = $(link).attr('href');
-                    return false; // Found the number link
+                    return false;
                 }
             });
 
-            // Fallback: If no numeric link, take the last link
-            if (!targetLink && links.length > 0) {
-                targetLink = links.last().attr('href');
-            }
+            if (!targetLink && links.length > 0) targetLink = links.last().attr('href');
 
-            if (!targetLink) throw new Error(`Could not find 'No. of Vendors' link for '${panchayat}'.`);
+            if (!targetLink) throw new Error(`Could not find Vendor link for '${panchayat}'.`);
 
             currentUrl = resolveUrl(currentUrl, targetLink);
+            log(`Found Vendor Link: ${targetLink}. Navigating to Final Page...`);
 
-            // Step 4: Fetch Final Panchayat Page
             html = await fetchPage(currentUrl);
             $ = cheerio.load(html);
         }
 
         // Step 5: Scrape Table Data
+        log(`Step 5: Extracting Data Table...`);
         let tableData = '';
         $('tr').each((i, row) => {
             const cells = $(row).find('td, th');
@@ -148,10 +161,11 @@ export async function POST(req: NextRequest) {
             throw new Error("No data table found on the final page.");
         }
 
-        return NextResponse.json({ data: tableData, currentUrl });
+        log(`Success! Extracted ${tableData.length} chars of data.`);
+        return NextResponse.json({ data: tableData, currentUrl, logs });
 
     } catch (error: any) {
-        console.error('Crawler Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        log(`ERROR: ${error.message}`);
+        return NextResponse.json({ error: error.message, logs }, { status: 500 });
     }
 }

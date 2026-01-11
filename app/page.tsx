@@ -574,14 +574,18 @@ export default function Home() {
         })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+        // Construct detailed error message with logs
+        const logTrace = data.logs ? '\n\n--- DEBUG TRACE ---\n' + data.logs.join('\n') : '';
+        throw new Error(data.error + logTrace);
+      }
 
       if (data.data) {
         setPastedData(data.data);
         alert(`Successfully scraped data for ${p.nregaGP || p.name}!\nReview the text area and click 'Sync Distribution' to confirm.`);
       }
     } catch (error: any) {
-      alert(`Auto-Fetch Failed: ${error.message}\n\nTIP: Open the specific "No. Of Vendors" page for this Panchayat in your browser, copy that URL, and paste it into the NREGA URL setting.`);
+      alert(`Auto-Fetch Failed: ${error.message}`);
     } finally {
       setIsFetching(false);
     }
