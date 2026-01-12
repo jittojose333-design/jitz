@@ -1241,7 +1241,7 @@ export default function Home() {
                               <p className="text-sm font-black italic">{formatCurrency(p.unpaidAmount)}</p>
                             </div>
                             <div>
-                              <span className="text-[9px] font-black uppercase text-rose-500 tracking-tighter mb-1">No Bill ({p.noBillCount})</p>
+                              <span className="text-[9px] font-black uppercase text-rose-500 tracking-tighter mb-1">No Bill ({p.noBillCount})</span>
                               <p className="text-sm font-black italic">{formatCurrency(p.noBillAmount)}</p>
                             </div>
                           </div>
