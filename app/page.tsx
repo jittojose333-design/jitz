@@ -571,14 +571,23 @@ export default function Home() {
       const p = selectedPanchayatDetails;
       if (!p) throw new Error("No Panchayat selected");
 
+      // Robust Name Selection
+      const targetPanchayatName = (p.nregaGP || p.name || '').trim();
+
+      console.log(`[AutoFetch] Target: ${targetPanchayatName} | District: ${p.district} | Block: ${p.block}`);
+
+      if (!targetPanchayatName || targetPanchayatName.length < 2) {
+        throw new Error(`Panchayat Name is MISSING or too short. (Value: '${targetPanchayatName}'). Please edit the Panchayat and ensure 'Official Location Name' or 'NREGA Status Identifier' is set.`);
+      }
+
       const res = await fetch('/api/nrega', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: nregaUrl,
-          district: p.district,
-          block: p.block,
-          panchayat: p.nregaGP || p.name // Use nregaGP if available, else name
+          district: (p.district || '').trim(),
+          block: (p.block || '').trim(),
+          panchayat: targetPanchayatName
         })
       });
       const data = await res.json();
@@ -590,7 +599,7 @@ export default function Home() {
 
       if (data.data) {
         setPastedData(data.data);
-        alert(`Successfully scraped data for ${p.nregaGP || p.name}!\nReview the text area and click 'Sync Distribution' to confirm.`);
+        alert(`Successfully scraped data for ${targetPanchayatName}!\nReview the text area and click 'Sync Distribution' to confirm.`);
       }
     } catch (error: any) {
       alert(`Auto-Fetch Failed: ${error.message}`);
