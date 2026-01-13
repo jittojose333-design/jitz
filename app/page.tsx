@@ -65,7 +65,13 @@ export default function Home() {
   const [editingPanchayat, setEditingPanchayat] = useState<Panchayat | null>(null);
   const [pastedData, setPastedData] = useState('');
   const [isReconciling, setIsReconciling] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
+
+  // CLOUD AUTH STATE
+  const [isAppAuthenticated, setIsAppAuthenticated] = useState(false);
+  const [loginPin, setLoginPin] = useState('');
+  const [loginError, setLoginError] = useState(false);
 
   // Admin State
   const [isAdmin, setIsAdmin] = useState(false);
@@ -95,7 +101,13 @@ export default function Home() {
   // Default prices for new panchayats
   const initialPrices: BoardPrices = { type1: 0, type2: 0, type3: 0, type4: 0 };
 
-  // Load from Supabase
+  // Load from Supabase (Only if Authenticated)
+  useEffect(() => {
+    if (isAppAuthenticated) {
+      fetchData();
+    }
+  }, [isAppAuthenticated]);
+
   const fetchData = async () => {
     try {
       setIsLoaded(false);
@@ -689,21 +701,70 @@ export default function Home() {
 
   if (!isLoaded) return null;
 
-  return (
-    <div className="min-h-screen bg-[#f8fafc] dark:bg-[#020617] text-slate-900 dark:text-slate-100 font-sans selection:bg-indigo-100 selection:text-indigo-900 overflow-x-hidden">
-      {/* Sidebar */}
-      <aside className="fixed left-0 top-0 h-full w-72 bg-white/70 dark:bg-[#0f172a]/70 backdrop-blur-2xl border-r border-slate-200/50 dark:border-white/5 z-40 hidden lg:flex flex-col">
-        <div className="p-8">
-          <div className="flex items-center gap-4 mb-12">
-            <div className="w-12 h-12 gradient-bg rounded-2xl flex items-center justify-center text-white shadow-xl shadow-indigo-500/30">
-              <Package size={26} />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600 dark:from-indigo-400 dark:to-violet-400 font-display">Aone</h1>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Board Tracker</p>
-            </div>
+  // AUTHENTICATION GATEKEEPER
+  if (!isAppAuthenticated) {
+    return (
+      <main className="min-h-screen relative flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+        {/* Background blobs */}
+        <div className="fixed top-20 left-20 w-[300px] h-[300px] bg-indigo-500/10 blur-[100px] rounded-full animate-pulse" />
+        <div className="fixed bottom-20 right-20 w-[300px] h-[300px] bg-sky-500/10 blur-[100px] rounded-full" />
+
+        <div className="relative glass p-10 rounded-[40px] border shadow-2xl max-w-sm w-full mx-4 text-center space-y-8 animate-fade-in">
+          <div className="w-20 h-20 bg-indigo-500/10 text-indigo-500 rounded-3xl flex items-center justify-center mx-auto mb-4">
+            <Lock size={40} />
           </div>
 
+          <div>
+            <h1 className="text-3xl font-black font-display italic text-slate-800 dark:text-white">Aone Enterprise</h1>
+            <p className="text-sm font-bold text-slate-400 mt-2 uppercase tracking-widest">Cloud Access Point</p>
+          </div>
+
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            if (loginPin === 'aone2020') {
+              setIsAppAuthenticated(true);
+            } else {
+              setLoginError(true);
+              setTimeout(() => setLoginError(false), 500);
+            }
+          }} className="space-y-4">
+            <div className="relative">
+              <input
+                type="password"
+                placeholder="Enter Access PIN"
+                className={`w-full px-6 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border outline-none font-bold text-center text-xl tracking-[0.5em] transition-all focus:ring-4 focus:ring-indigo-500/10 ${loginError ? 'border-rose-500 animate-shake' : 'border-slate-200 dark:border-white/10'}`}
+                value={loginPin}
+                onChange={(e) => setLoginPin(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full py-4 gradient-bg text-white rounded-2xl font-black uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-indigo-500/20"
+            >
+              Unlock Dashboard
+            </button>
+          </form>
+          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Protected Environment</p>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0f1115] text-slate-800 dark:text-slate-100 font-sans transition-colors duration-300 selection:bg-indigo-500/30">
+      {/* Sidebar */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 glass border-r transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${false ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-8 h-full flex flex-col">
+          <div className="flex items-center gap-3 mb-10 pl-2">
+            <div className="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+              <LayoutDashboard size={20} strokeWidth={3} />
+            </div>
+            <div>
+              <h1 className="text-xl font-black italic tracking-tighter">AONE BOARD</h1>
+              <span className="text-[9px] font-black text-indigo-500 uppercase tracking-[0.3em] block ml-1">Tracker V2.0</span>
+            </div>
+          </div>
           <nav className="space-y-2">
             {[
               { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
