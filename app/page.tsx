@@ -65,7 +65,7 @@ export default function Home() {
   const [editingPanchayat, setEditingPanchayat] = useState<Panchayat | null>(null);
   const [pastedData, setPastedData] = useState('');
   const [isReconciling, setIsReconciling] = useState(false);
-  const [isReconciling, setIsReconciling] = useState(false);
+
   const [isFetching, setIsFetching] = useState(false);
 
   // CLOUD AUTH STATE
