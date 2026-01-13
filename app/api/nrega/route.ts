@@ -88,43 +88,83 @@ export async function POST(req: NextRequest) {
             }
         };
 
-        // Step 1: Loading State Page
+        // Step 1: Loading Initial Page
         let currentUrl = url;
-        log(`Step 1: Loading Initial State Page...`);
+        log(`Step 1: Loading Initial Page...`);
         let html = await fetchPage(currentUrl);
         let $ = cheerio.load(html);
 
-        // If district provided
-        if (district) {
-            log(`Step 2: Searching for District '${district}'...`);
-            const districtLink = findLink($, district);
-            if (!districtLink) throw new Error(`District '${district}' link not found on page.`);
+        // SMART NAVIGATION LOGIC
+        // Check if we are already deep in the site (Block Page or District Page)
 
-            currentUrl = resolveUrl(currentUrl, districtLink);
-            log(`Found District Link: ${districtLink}. Navigating...`);
+        let foundPanchayatDirectly = false;
 
-            html = await fetchPage(currentUrl);
-            $ = cheerio.load(html);
-        } else {
-            log(`Skipping District step (not provided)`);
+        // CHECK 1: Are we already on the Block Page? (Is the Panchayat visible?)
+        if (panchayat) {
+            const searchP = panchayat.toLowerCase().trim();
+            const directPanchayatRow = $('tr').filter((i, row) => $(row).text().toLowerCase().includes(searchP)).first();
+            if (directPanchayatRow.length > 0) {
+                log(`🎯 Smart Jump: Found Panchayat '${panchayat}' immediately! Skipping navigation steps.`);
+                foundPanchayatDirectly = true;
+            }
         }
 
-        // If block provided
-        if (block) {
-            log(`Step 3: Searching for Block '${block}'...`);
-            const blockLink = findLink($, block);
-            if (!blockLink) throw new Error(`Block '${block}' link not found inside District page.`);
+        // If not found directly, try navigation path
+        if (!foundPanchayatDirectly) {
 
-            currentUrl = resolveUrl(currentUrl, blockLink);
-            log(`Found Block Link: ${blockLink}. Navigating...`);
+            // CHECK 2: Are we on the District Page? (Is the Block visible?)
+            let skippedDistrict = false;
+            if (block && !foundPanchayatDirectly) {
+                const directBlockLink = findLink($, block);
+                if (directBlockLink) {
+                    log(`🎯 Smart Jump: Found Block '${block}' link immediately! Skipping District step.`);
+                    skippedDistrict = true;
 
-            html = await fetchPage(currentUrl);
-            $ = cheerio.load(html);
-        } else {
-            log(`Skipping Block step (not provided)`);
+                    // Click Block
+                    currentUrl = resolveUrl(currentUrl, directBlockLink);
+                    log(`Navigating to Block Page: ${directBlockLink}...`);
+                    html = await fetchPage(currentUrl);
+                    $ = cheerio.load(html);
+                }
+            }
+
+            // CHECK 3: Standard Flow (State -> District)
+            if (!skippedDistrict && district) {
+                log(`Step 2: Searching for District '${district}'...`);
+                const districtLink = findLink($, district);
+
+                if (districtLink) {
+                    currentUrl = resolveUrl(currentUrl, districtLink);
+                    log(`Found District Link: ${districtLink}. Navigating...`);
+                    html = await fetchPage(currentUrl);
+                    $ = cheerio.load(html);
+                } else {
+                    // If district not found, we might be lost, but let's check if the user provided a bad District name 
+                    // or if we are on a page where District isn't listed (e.g. invalid URL)
+                    // We log a warning but proceed to check for Block just in case
+                    log(`⚠️ Warning: District '${district}' link not found. Assuming we might be at a deeper level or URL is incorrect. Continuing check...`);
+                }
+            }
+
+            // CHECK 4: Block Step (if we didn't skip it earlier)
+            if (!skippedDistrict && block) {
+                log(`Step 3: Searching for Block '${block}'...`);
+                const blockLink = findLink($, block);
+
+                if (blockLink) {
+                    currentUrl = resolveUrl(currentUrl, blockLink);
+                    log(`Found Block Link: ${blockLink}. Navigating...`);
+                    html = await fetchPage(currentUrl);
+                    $ = cheerio.load(html);
+                } else {
+                    log(`⚠️ Warning: Block '${block}' link not found.`);
+                    // Only throw if we haven't found the final target yet either
+                    if (!panchayat) throw new Error(`Could not navigate to Block '${block}'.`);
+                }
+            }
         }
 
-        // If panchayat provided
+        // Final Step: Panchayat Selection
         if (panchayat) {
             log(`Step 4: Searching for Panchayat '${panchayat}'...`);
             // Find the row containing the Panchayat Name
@@ -139,7 +179,7 @@ export async function POST(req: NextRequest) {
                 }
             });
 
-            if (!targetRow) throw new Error(`Panchayat '${panchayat}' row not found in table.`);
+            if (!targetRow) throw new Error(`Panchayat '${panchayat}' row not found in table. (Are you on the correct Block page?)`);
             log(`Found Panchayat Row.`);
 
             const links = $(targetRow).find('a');
@@ -147,6 +187,7 @@ export async function POST(req: NextRequest) {
 
             links.each((i, link) => {
                 const txt = $(link).text().trim();
+                // We look for "No. of Vendors" which is usually a number
                 if (/^\d+$/.test(txt)) {
                     targetLink = $(link).attr('href');
                     return false;
@@ -155,7 +196,12 @@ export async function POST(req: NextRequest) {
 
             if (!targetLink && links.length > 0) targetLink = links.last().attr('href');
 
-            if (!targetLink) throw new Error(`Could not find Vendor link for '${panchayat}'.`);
+            if (!targetLink) {
+                // Fallback: If no link found, maybe we are ALREADY on the data page?
+                // Check if the current page has the big table?
+                // No, usually we need to click.
+                throw new Error(`Could not find 'No. of vendors' link for '${panchayat}'.`);
+            }
 
             currentUrl = resolveUrl(currentUrl, targetLink);
             log(`Found Vendor Link: ${targetLink}. Navigating to Final Page...`);
