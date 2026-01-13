@@ -772,7 +772,7 @@ export default function Home() {
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <span className="px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-500 text-[10px] font-black uppercase tracking-widest">Aone Enterprise</span>
-                <span className="px-3 py-1 rounded-full bg-rose-500/10 text-rose-500 text-[10px] font-black uppercase tracking-widest">Cloud V2.6 (TRACE)</span>
+                <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase tracking-widest">Cloud V2.7 (SMART)</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               </div>
               <h2 className="text-4xl font-black tracking-tight capitalize font-display italic">{activeTab}</h2>
