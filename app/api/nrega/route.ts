@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
                     method: 'GET',
                     headers: headers,
                     next: { revalidate: 0 },
-                    signal: AbortSignal.timeout(25000) // Extended timeout to 25s to beat slow NREGA response
+                    signal: AbortSignal.timeout(60000) // Max timeout 60s
                 });
 
                 if (!res.ok) {
