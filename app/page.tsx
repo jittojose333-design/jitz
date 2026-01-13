@@ -160,6 +160,9 @@ export default function Home() {
         })));
       }
 
+      // DEBUG ALERT (Remove after verification)
+      alert(`Debug: Loaded ${panchayatsData?.length || 0} Panchayats and ${ordersData?.length || 0} Orders from Cloud.`);
+
       const { data: categoriesData } = await supabase.from('expense_categories').select('*');
       if (categoriesData && categoriesData.length > 0) {
         setCategories(categoriesData.map((c: any) => ({
@@ -178,8 +181,9 @@ export default function Home() {
         ]);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching data:', error);
+      alert("Fetch Error: " + error.message);
     } finally {
       setIsLoaded(true);
     }
